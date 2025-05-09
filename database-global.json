@@ -2,6 +2,18 @@
   {
     "notification": {
       "ChoruYt": "Hello Dear $user, thank you for using this file, I hope you can give us 5 stars Ty."
-    }
+    },
+    "allowed_emails": [
+      "@gmail.com", "@googlemail.com",
+      "@outlook.com", "@hotmail.com", "@live.com", "@msn.com",
+      "@yahoo.com", "@ymail.com", "@rocketmail.com",
+      "@icloud.com", "@me.com", "@mac.com",
+      "@aol.com",
+      "@protonmail.com",
+      "@zoho.com",
+      "@gmx.com",
+      "@mail.com",
+      "@yandex.com"
+    ]
   }
 ]
