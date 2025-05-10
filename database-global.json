@@ -14,6 +14,34 @@
       "@gmx.com",
       "@mail.com",
       "@yandex.com"
+    ],
+    "achievement": [
+      {
+        "level": 1,
+        "icon": "https://testing.png",
+        "short": "Welcome newbie",
+        "id": 100,
+        "name": "Newbie",
+        "Item": "Avatar"
+      },
+      {
+        "level": 2,
+        "icon": "https://testing.png",
+        "short": "Coding User",
+        "id": 101,
+        "name": "Coding",
+        "Item": "Avatar_Border"
+      }
+    ],
+    "limited_edition": [
+      {
+        "event": "Valentines",
+        "icon": "https://testing.png",
+        "short": "Lover Sweet",
+        "id": 392832,
+        "name": "Sweet",
+        "item": "NameDesign"
+      }
     ]
   }
 ]
