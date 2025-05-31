@@ -1,0 +1,1136 @@
+/*
+@ChoruTiktokers
+Anti devtools
+*/
+(function(global, factory) {
+    if (typeof exports === "object" && typeof module !== "undefined") {
+        module.exports = factory();
+    } else if (typeof define === "function" && define.amd) {
+        define(factory);
+    } else {
+        global = typeof globalThis !== "undefined" ? globalThis : global || self;
+        global.DisableDevtool = factory();
+    }
+})(this, function() {
+    "use strict";
+
+    let currentConfig = {};
+    const activeDetectors = [];
+    let mainIntervalId = 0;
+    let stopTimeoutId = 0;
+    let detectionCycleCount = 0;
+    const triggeredDetectorStates = {};
+    let isDevtoolsOpenedState = false;
+
+    let _consoleLog = function() {};
+    let _consoleTable = function() {};
+    let _consoleClear = function() {};
+
+    let lastCheckUrlForIgnore = "";
+    let isIgnoredUrlCached = false;
+    let isGloballySuspended = false;
+
+
+    function getTypeof(val) {
+        return typeof val;
+    }
+
+    function assertInstanceof(obj, constructor) {
+        if (!(obj instanceof constructor)) {
+            throw new TypeError("Cannot call a class as a function");
+        }
+    }
+
+    function defineProperties(target, props) {
+        for (let i = 0; i < props.length; i++) {
+            const descriptor = props[i];
+            descriptor.enumerable = descriptor.enumerable || false;
+            descriptor.configurable = true;
+            if ("value" in descriptor) descriptor.writable = true;
+            Object.defineProperty(target, descriptor.key, descriptor);
+        }
+    }
+
+    function createClass(Constructor, protoProps, staticProps) {
+        if (protoProps) defineProperties(Constructor.prototype, protoProps);
+        if (staticProps) defineProperties(Constructor, staticProps);
+        Object.defineProperty(Constructor, "prototype", { writable: false });
+        return Constructor;
+    }
+
+    function definePropertyOrSet(obj, key, value) {
+        if (key in obj) {
+            Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true });
+        } else {
+            obj[key] = value;
+        }
+        return obj;
+    }
+
+    function inherits(subClass, superClass) {
+        if (typeof superClass !== "function" && superClass !== null) {
+            throw new TypeError("Super expression must either be null or a function");
+        }
+        subClass.prototype = Object.create(superClass && superClass.prototype, {
+            constructor: { value: subClass, writable: true, configurable: true }
+        });
+        Object.defineProperty(subClass, "prototype", { writable: false });
+        if (superClass) setPrototypeOf(subClass, superClass);
+    }
+
+    function getPrototypeOf(obj) {
+        getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf.bind() : function(o) { return o.__proto__ || Object.getPrototypeOf(o); };
+        return getPrototypeOf(obj);
+    }
+
+    function setPrototypeOf(obj, proto) {
+        setPrototypeOf = Object.setPrototypeOf ? Object.setPrototypeOf.bind() : function(o, p) { o.__proto__ = p; return o; };
+        return setPrototypeOf(obj, proto);
+    }
+
+    function assertThisInitialized(self, call) {
+        if (call && (getTypeof(call) === "object" || getTypeof(call) === "function")) {
+            return call;
+        }
+        if (call !== void 0) {
+            throw new TypeError("Derived constructors may only return object or undefined");
+        }
+        if (self === void 0) {
+            throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
+        }
+        return self;
+    }
+
+    function createSuper(Derived) {
+        const hasNativeReflectConstruct = (function() {
+            if (typeof Reflect === "undefined" || !Reflect.construct) return false;
+            if (Reflect.construct.sham) return false;
+            if (typeof Proxy === "function") return true;
+            try {
+                Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function() {}));
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })();
+        return function() {
+            const Super = getPrototypeOf(Derived);
+            let result;
+            if (hasNativeReflectConstruct) {
+                const NewTarget = getPrototypeOf(this).constructor;
+                result = Reflect.construct(Super, arguments, NewTarget);
+            } else {
+                result = Super.apply(this, arguments);
+            }
+            return assertThisInitialized(this, result);
+        };
+    }
+
+    function arrayLikeToArray(arr, len) {
+        if (len == null || len > arr.length) len = arr.length;
+        const newArr = new Array(len);
+        for (let i = 0; i < len; i++) newArr[i] = arr[i];
+        return newArr;
+    }
+
+    function _createIterator(iterable) {
+        let iteratorMethod = typeof Symbol !== "undefined" && iterable[Symbol.iterator] || iterable["@@iterator"];
+        if (!iteratorMethod) {
+            if (Array.isArray(iterable) || (iteratorMethod = _unsupportedIterableToArray(iterable))) {
+                if (iteratorMethod) iterable = iteratorMethod;
+                let index = 0;
+                const F = function() {};
+                return {
+                    s: F,
+                    n: function() {
+                        return index >= iterable.length ? { done: true } : { done: false, value: iterable[index++] };
+                    },
+                    e: function(e) { throw e; },
+                    f: F
+                };
+            }
+            throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+        }
+        let normalCompletion = true, didErr = false, err;
+        const it = iteratorMethod.call(iterable);
+        return {
+            s: function() { iteratorMethod = it.next; },
+            n: function() { const step = iteratorMethod.call(it); normalCompletion = step.done; return step; },
+            e: function(e) { didErr = true; err = e; },
+            f: function() { try { if (!normalCompletion && it.return != null) it.return(); } finally { if (didErr) throw err; } }
+        };
+    }
+    function _unsupportedIterableToArray(o, minLen) {
+        if (!o) return;
+        if (typeof o === "string") return arrayLikeToArray(o, minLen);
+        let n = Object.prototype.toString.call(o).slice(8, -1);
+        if (n === "Object" && o.constructor) n = o.constructor.name;
+        if (n === "Map" || n === "Set") return Array.from(o);
+        if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return arrayLikeToArray(o, minLen);
+    }
+
+
+    function defaultOnDevToolOpen() {
+        window.location.href = "https://pastebin.com/Wf5E6WWU";
+        // Fvxk all scraper for this
+    }
+
+    const defaultConfigValues = {
+        md5: "",
+        ondevtoolopen: defaultOnDevToolOpen,
+        ondevtoolclose: null,
+        url: "",
+        timeOutUrl: "",
+        tkName: "ddtk",
+        interval: 500,
+        disableMenu: true,
+        stopIntervalTime: 5000,
+        clearIntervalWhenDevOpenTrigger: false,
+        detectors: [0, 1, 3, 4, 5, 6, 7],
+        clearLog: true,
+        disableSelect: false,
+        disableCopy: false,
+        disableCut: false,
+        disablePaste: false,
+        ignore: null,
+        disableIframeParents: true,
+        seo: true,
+        rewriteHTML: ""
+    };
+
+    const userConfigurableProps = ["detectors", "ondevtoolclose", "ignore"];
+
+    function applyUserConfig(userOptions = {}) {
+        currentConfig = {};
+        for (const key in defaultConfigValues) {
+            currentConfig[key] = defaultConfigValues[key];
+        }
+
+        for (const key in userOptions) {
+            if (userOptions[key] !== undefined && (getTypeof(defaultConfigValues[key]) === getTypeof(userOptions[key]) || userConfigurableProps.includes(key))) {
+                 currentConfig[key] = userOptions[key];
+            }
+        }
+
+        if (typeof currentConfig.ondevtoolclose === 'function' && currentConfig.clearIntervalWhenDevOpenTrigger === true) {
+            currentConfig.clearIntervalWhenDevOpenTrigger = false;
+            console.warn("【DISABLE-DEVTOOL】clearIntervalWhenDevOpenTrigger 在使用 ondevtoolclose 时无效");
+        }
+    }
+
+    function getCurrentTimestamp() {
+        return new Date().getTime();
+    }
+
+    function measureExecutionTime(fn) {
+        const startTime = getCurrentTimestamp();
+        fn();
+        return getCurrentTimestamp() - startTime;
+    }
+    
+    let isDialogWrapped = false;
+    function wrapDialogs(onBeforeCall, onAfterCall) {
+        if(isDialogWrapped) return;
+        const originalAlert = window.alert;
+        const originalConfirm = window.confirm;
+        const originalPrompt = window.prompt;
+
+        function wrap(originalFunc) {
+            return function() {
+                onBeforeCall && onBeforeCall();
+                const result = originalFunc.apply(this, arguments);
+                onAfterCall && onAfterCall();
+                return result;
+            };
+        }
+        try {
+            window.alert = wrap(originalAlert);
+            window.confirm = wrap(originalConfirm);
+            window.prompt = wrap(originalPrompt);
+            isDialogWrapped = true;
+        } catch(e) {
+            isDialogWrapped = false;
+        }
+    }
+
+
+    const envFlags = {
+        iframe: false,
+        pc: false,
+        qqBrowser: false,
+        firefox: false,
+        macos: false,
+        edge: false,
+        oldEdge: false,
+        ie: false,
+        iosChrome: false,
+        iosEdge: false,
+        chrome: false,
+        seoBot: false,
+        mobile: false
+    };
+
+    function detectEnvironment() {
+        const ua = navigator.userAgent.toLowerCase();
+        const platform = navigator.platform ? navigator.platform.toLowerCase() : "";
+        const maxTouchPoints = typeof navigator.maxTouchPoints === 'number' ? navigator.maxTouchPoints : 0;
+
+        let isMobileDevice;
+        if (typeof maxTouchPoints === 'number') {
+            isMobileDevice = maxTouchPoints > 1;
+        } else if (typeof platform === 'string') {
+            const lcPlatform = platform.toLowerCase();
+            if (/(mac|win)/i.test(lcPlatform)) isMobileDevice = false;
+            else if (/(android|iphone|ipad|ipod|arch)/i.test(lcPlatform)) isMobileDevice = true;
+            else isMobileDevice = /(iphone|ipad|ipod|ios|android)/i.test(ua);
+        } else {
+             isMobileDevice = /(iphone|ipad|ipod|ios|android)/i.test(ua);
+        }
+
+
+        envFlags.iframe = !!window.top && window !== window.top;
+        envFlags.mobile = isMobileDevice;
+        envFlags.pc = !envFlags.mobile;
+        envFlags.qqBrowser = ua.includes("qqbrowser");
+        envFlags.firefox = ua.includes("firefox");
+        envFlags.macos = ua.includes("macintosh") || platform.includes("mac");
+        envFlags.edge = ua.includes("edge");
+        envFlags.chrome = ua.includes("chrome") || ua.includes("crios");
+        envFlags.oldEdge = envFlags.edge && !ua.includes("chrome");
+        envFlags.ie = envFlags.oldEdge || ua.includes("trident") || ua.includes("msie");
+        envFlags.iosChrome = ua.includes("crios");
+        envFlags.iosEdge = ua.includes("edgios");
+        envFlags.seoBot = !envFlags.mobile && /(googlebot|baiduspider|bingbot|applebot|petalbot|yandexbot|bytespider|chrome\-lighthouse|moto g power)/i.test(ua);
+    }
+
+    function createLargeObjectArray() {
+        const obj = {};
+        for (let i = 0; i < 500; i++) {
+            obj["".concat(i)] = "".concat(i);
+        }
+        const arr = [];
+        for (let i = 0; i < 50; i++) {
+            arr.push(obj);
+        }
+        return arr;
+    }
+
+    function clearConsoleIfNeeded() {
+        if (currentConfig.clearLog) {
+            _consoleClear();
+        }
+    }
+
+    function shouldIgnore() {
+        const ignoreSetting = currentConfig.ignore;
+        if (!ignoreSetting) return false;
+        if (typeof ignoreSetting === 'function') return ignoreSetting();
+
+        if (ignoreSetting.length !== 0) {
+            const currentUrl = location.href;
+            if (lastCheckUrlForIgnore === currentUrl) return isIgnoredUrlCached;
+
+            lastCheckUrlForIgnore = currentUrl;
+            let isMatch = false;
+            const iterator = _createIterator(ignoreSetting);
+            try {
+                for (iterator.s(); !iterator.n().done;) {
+                    const rule = iterator.n().value;
+                    if (typeof rule === 'string') {
+                        if (currentUrl.includes(rule)) {
+                            isMatch = true;
+                            break;
+                        }
+                    } else if (rule.test && rule.test(currentUrl)) {
+                        isMatch = true;
+                        break;
+                    }
+                }
+            } catch (err) {
+                iterator.e(err);
+            } finally {
+                iterator.f();
+            }
+            isIgnoredUrlCached = isMatch;
+            return isMatch;
+        }
+        return false;
+    }
+    
+    function isSuspended() {
+        return isGloballySuspended;
+    }
+
+    function preventDefaultHandler(eventSource, event) {
+        if (!shouldIgnore() && !isSuspended()) {
+            const e = event || eventSource.event;
+            e.returnValue = false;
+            e.preventDefault();
+            return false;
+        }
+    }
+
+    function addEventListenerToPrevent(target, eventName) {
+        target.addEventListener(eventName, function(e) {
+            return preventDefaultHandler(target, e);
+        });
+    }
+    
+    function addKeyboardAndMenuListeners(targetWindow) {
+        const KEY_I = 73, KEY_J = 74, KEY_U = 85, KEY_S = 83, KEY_F12 = 123;
+
+        const isMac = envFlags.macos;
+        function checkShortcuts(e, keyCode) {
+            if (isMac) {
+                return (e.metaKey && e.altKey && (keyCode === KEY_J || keyCode === KEY_I)) ||
+                       (e.metaKey && e.altKey && keyCode === KEY_U) ||
+                       (e.metaKey && keyCode === KEY_S);
+            } else {
+                return (e.ctrlKey && e.shiftKey && (keyCode === KEY_J || keyCode === KEY_I)) ||
+                       (e.ctrlKey && (keyCode === KEY_U || keyCode === KEY_S));
+            }
+        }
+
+        targetWindow.addEventListener("keydown", function(e) {
+            const event = e || targetWindow.event;
+            const keyCode = event.keyCode || event.which;
+            if (keyCode === KEY_F12 || checkShortcuts(event, keyCode)) {
+                preventDefaultHandler(targetWindow, event);
+            }
+        }, true);
+
+        if (currentConfig.disableMenu) {
+            targetWindow.addEventListener("contextmenu", function(e) {
+                 if (e.pointerType !== "touch") {
+                     preventDefaultHandler(targetWindow, e);
+                 }
+            });
+        }
+        if (currentConfig.disableSelect) addEventListenerToPrevent(targetWindow, "selectstart");
+        if (currentConfig.disableCopy) addEventListenerToPrevent(targetWindow, "copy");
+        if (currentConfig.disableCut) addEventListenerToPrevent(targetWindow, "cut");
+        if (currentConfig.disablePaste) addEventListenerToPrevent(targetWindow, "paste");
+    }
+
+
+    function resetDetectorState(type) {
+        triggeredDetectorStates[type] = false;
+    }
+
+    function hasAnyDetectorTriggered() {
+        for (const type in triggeredDetectorStates) {
+            if (triggeredDetectorStates[type]) {
+                isDevtoolsOpenedState = true;
+                return true;
+            }
+        }
+        isDevtoolsOpenedState = false;
+        return false;
+    }
+
+    const DetectorType = {};
+    DetectorType[DetectorType.Unknown = -1] = "Unknown";
+    DetectorType[DetectorType.RegToString = 0] = "RegToString";
+    DetectorType[DetectorType.DefineId = 1] = "DefineId";
+    DetectorType[DetectorType.Size = 2] = "Size";
+    DetectorType[DetectorType.DateToString = 3] = "DateToString";
+    DetectorType[DetectorType.FuncToString = 4] = "FuncToString";
+    DetectorType[DetectorType.Debugger = 5] = "Debugger";
+    DetectorType[DetectorType.Performance = 6] = "Performance";
+    DetectorType[DetectorType.DebugLib = 7] = "DebugLib";
+
+
+    const BaseDetector = (function() {
+        function Detector(config) {
+            assertInstanceof(this, Detector);
+            this.type = DetectorType.Unknown;
+            this.enabled = true;
+            this.type = config.type;
+            this.enabled = config.enabled === undefined ? true : config.enabled;
+
+            if (this.enabled) {
+                activeDetectors.push(this);
+                this.init();
+            }
+        }
+        createClass(Detector, [{
+            key: "onDevToolOpen",
+            value: function onDevToolOpen() {
+                console.warn("You don't have permission to use DEVTOOL!【type = ".concat(this.type, "】"));
+                if (currentConfig.clearIntervalWhenDevOpenTrigger) {
+                    stopDetectionInterval();
+                }
+                window.clearTimeout(stopTimeoutId);
+                currentConfig.ondevtoolopen(this.type, defaultOnDevToolOpen);
+                triggeredDetectorStates[this.type] = true;
+            }
+        }, {
+            key: "init",
+            value: function init() {}
+        },{
+            key: "detect",
+            value: function detect() {}
+        }]);
+        return Detector;
+    }());
+
+
+    const DebugLibDetector = (function() {
+        inherits(DebugLibDetectorInternal, BaseDetector);
+        const _super = createSuper(DebugLibDetectorInternal);
+        function DebugLibDetectorInternal() {
+            assertInstanceof(this, DebugLibDetectorInternal);
+            return _super.call(this, { type: DetectorType.DebugLib });
+        }
+        createClass(DebugLibDetectorInternal, [{
+            key: "init",
+            value: function init() {}
+        }, {
+            key: "detect",
+            value: function detect() {
+                let erudaDetected = false;
+                try { erudaDetected = !!(window.eruda && window.eruda._devTools && window.eruda._devTools._isShow); } catch(e){}
+                
+                let vConsoleDetected = false;
+                try { vConsoleDetected = !!(window._vcOrigConsole && window.document.querySelector("#__vconsole.vc-toggle")); } catch(e){}
+
+                if (erudaDetected || vConsoleDetected) {
+                    this.onDevToolOpen();
+                }
+            }
+        }], [{
+            key: "isUsing",
+            value: function isUsing() {
+                try { return !!window.eruda || !!window._vcOrigConsole; } catch(e){ return false; }
+            }
+        }]);
+        return DebugLibDetectorInternal;
+    }());
+
+
+    let isDocumentHidden = false;
+    function startDetectionInterval(mainLibObject) {
+        function onVisibilityChange() {
+            isDocumentHidden = true;
+        }
+        function onVisibilityGain() {
+            isDocumentHidden = false;
+        }
+        
+        let hidden, visibilityChange, visibilityState;
+        if (typeof document.hidden !== "undefined") {
+            hidden = "hidden";
+            visibilityChange = "visibilitychange";
+            visibilityState = "visibilityState";
+        } else if (typeof document.mozHidden !== "undefined") {
+            hidden = "mozHidden";
+            visibilityChange = "mozvisibilitychange";
+            visibilityState = "mozVisibilityState";
+        } else if (typeof document.msHidden !== "undefined") {
+            hidden = "msHidden";
+            visibilityChange = "msvisibilitychange";
+            visibilityState = "msVisibilityState";
+        } else if (typeof document.webkitHidden !== "undefined") {
+            hidden = "webkitHidden";
+            visibilityChange = "webkitvisibilitychange";
+            visibilityState = "webkitVisibilityState";
+        }
+
+        function handleVisibility() {
+            if (document[visibilityState] === hidden) {
+                onVisibilityChange();
+            } else {
+                onVisibilityGain();
+            }
+        }
+
+        if(visibilityChange && typeof document.addEventListener !== "undefined"){
+            document.removeEventListener(visibilityChange, handleVisibility, false);
+            document.addEventListener(visibilityChange, handleVisibility, false);
+        }
+        
+        wrapDialogs(onVisibilityChange, onVisibilityGain);
+
+
+        mainIntervalId = window.setInterval(function() {
+            if (mainLibObject.isSuspend || isDocumentHidden || shouldIgnore()) {
+                return;
+            }
+            const iterator = _createIterator(activeDetectors);
+            try {
+                for (iterator.s(); !iterator.n().done;) {
+                    const detector = iterator.n().value;
+                    resetDetectorState(detector.type);
+                    detector.detect(detectionCycleCount++);
+                }
+            } catch (err) {
+                iterator.e(err);
+            } finally {
+                iterator.f();
+            }
+
+            clearConsoleIfNeeded();
+
+            if (typeof currentConfig.ondevtoolclose === 'function') {
+                const previouslyOpened = isDevtoolsOpenedState;
+                if (!hasAnyDetectorTriggered() && previouslyOpened) {
+                    currentConfig.ondevtoolclose();
+                }
+            }
+
+        }, currentConfig.interval);
+
+        stopTimeoutId = setTimeout(function() {
+            if (!envFlags.pc || DebugLibDetector.isUsing()) {
+                 stopDetectionInterval();
+            }
+        }, currentConfig.stopIntervalTime);
+    }
+
+    function stopDetectionInterval() {
+        window.clearInterval(mainIntervalId);
+    }
+
+    const MD5_S = [
+        [7, 12, 17, 22], [5, 9, 14, 20], [4, 11, 16, 23], [6, 10, 15, 21]
+    ];
+    const MD5_K = [
+        -680876936, -389564586, 606105819, -1044525330, -176418897, 1200080426, -1473231341, -45705983,
+        1770035416, -1958414417, -42063, -1990404162, 1804603682, -40341101, -1502002290, 1236535329,
+        -165796510, -1069501632, 643717713, -373897302, -701558691, 38016083, -660478335, -405537848,
+        568446438, -1019803690, -187363961, 1163531501, -1444681467, -51403784, 1735328473, -1926607734,
+        -378558, -2022574463, 1839030562, -35309556, -1530992060, 1272893353, -155497632, -1094730640,
+        681279174, -358537222, -722521979, 76029189, -640364487, -421815835, 530742520, -995338651,
+        -198630844, 1126891415, -1416354905, -57434055, 1700485571, -1894986606, -1051523, -2054922799,
+        1873313359, -30611744, -1560198380, 1309151649, -145523070, -1120210379, 718787259, -343485551
+    ];
+
+    function md5_cmn(q, a, b, x, s, t) {
+        return safe_add(bit_rol(safe_add(safe_add(a, q), safe_add(x, t)), s), b);
+    }
+    function md5_ff(a, b, c, d, x, s, t) {
+        return md5_cmn((b & c) | ((~b) & d), a, b, x, s, t);
+    }
+    function md5_gg(a, b, c, d, x, s, t) {
+        return md5_cmn((b & d) | (c & (~d)), a, b, x, s, t);
+    }
+    function md5_hh(a, b, c, d, x, s, t) {
+        return md5_cmn(b ^ c ^ d, a, b, x, s, t);
+    }
+    function md5_ii(a, b, c, d, x, s, t) {
+        return md5_cmn(c ^ (b | (~d)), a, b, x, s, t);
+    }
+
+    function safe_add(x, y) {
+        let lsw = (x & 0xFFFF) + (y & 0xFFFF);
+        let msw = (x >> 16) + (y >> 16) + (lsw >> 16);
+        return (msw << 16) | (lsw & 0xFFFF);
+    }
+
+    function bit_rol(num, cnt) {
+        return (num << cnt) | (num >>> (32 - cnt));
+    }
+
+    function str2binl(str) {
+        let bin = Array();
+        let mask = (1 << 8) - 1;
+        for (let i = 0; i < str.length * 8; i += 8)
+            bin[i >> 5] |= (str.charCodeAt(i / 8) & mask) << (i % 32);
+        return bin;
+    }
+
+    function binl2hex(binarray) {
+        let hex_tab = "0123456789abcdef";
+        let str = "";
+        for (let i = 0; i < binarray.length * 4; i++) {
+            str += hex_tab.charAt((binarray[i >> 2] >> ((i % 4) * 8 + 4)) & 0xF) +
+                   hex_tab.charAt((binarray[i >> 2] >> ((i % 4) * 8)) & 0xF);
+        }
+        return str;
+    }
+    
+    function core_md5(x, len) {
+        x[len >> 5] |= 0x80 << ((len) % 32);
+        x[(((len + 64) >>> 9) << 4) + 14] = len;
+
+        let a = 1732584193;
+        let b = -271733879;
+        let c = -1732584194;
+        let d = 271733878;
+
+        for (let i = 0; i < x.length; i += 16) {
+            let olda = a;
+            let oldb = b;
+            let oldc = c;
+            let oldd = d;
+
+            a = md5_ff(a, b, c, d, x[i + 0], MD5_S[0][0], MD5_K[0]);
+            d = md5_ff(d, a, b, c, x[i + 1], MD5_S[0][1], MD5_K[1]);
+            c = md5_ff(c, d, a, b, x[i + 2], MD5_S[0][2], MD5_K[2]);
+            b = md5_ff(b, c, d, a, x[i + 3], MD5_S[0][3], MD5_K[3]);
+            a = md5_ff(a, b, c, d, x[i + 4], MD5_S[0][0], MD5_K[4]);
+            d = md5_ff(d, a, b, c, x[i + 5], MD5_S[0][1], MD5_K[5]);
+            c = md5_ff(c, d, a, b, x[i + 6], MD5_S[0][2], MD5_K[6]);
+            b = md5_ff(b, c, d, a, x[i + 7], MD5_S[0][3], MD5_K[7]);
+            a = md5_ff(a, b, c, d, x[i + 8], MD5_S[0][0], MD5_K[8]);
+            d = md5_ff(d, a, b, c, x[i + 9], MD5_S[0][1], MD5_K[9]);
+            c = md5_ff(c, d, a, b, x[i + 10], MD5_S[0][2], MD5_K[10]);
+            b = md5_ff(b, c, d, a, x[i + 11], MD5_S[0][3], MD5_K[11]);
+            a = md5_ff(a, b, c, d, x[i + 12], MD5_S[0][0], MD5_K[12]);
+            d = md5_ff(d, a, b, c, x[i + 13], MD5_S[0][1], MD5_K[13]);
+            c = md5_ff(c, d, a, b, x[i + 14], MD5_S[0][2], MD5_K[14]);
+            b = md5_ff(b, c, d, a, x[i + 15], MD5_S[0][3], MD5_K[15]);
+
+            a = md5_gg(a, b, c, d, x[i + 1], MD5_S[1][0], MD5_K[16]);
+            d = md5_gg(d, a, b, c, x[i + 6], MD5_S[1][1], MD5_K[17]);
+            c = md5_gg(c, d, a, b, x[i + 11], MD5_S[1][2], MD5_K[18]);
+            b = md5_gg(b, c, d, a, x[i + 0], MD5_S[1][3], MD5_K[19]);
+            a = md5_gg(a, b, c, d, x[i + 5], MD5_S[1][0], MD5_K[20]);
+            d = md5_gg(d, a, b, c, x[i + 10], MD5_S[1][1], MD5_K[21]);
+            c = md5_gg(c, d, a, b, x[i + 15], MD5_S[1][2], MD5_K[22]);
+            b = md5_gg(b, c, d, a, x[i + 4], MD5_S[1][3], MD5_K[23]);
+            a = md5_gg(a, b, c, d, x[i + 9], MD5_S[1][0], MD5_K[24]);
+            d = md5_gg(d, a, b, c, x[i + 14], MD5_S[1][1], MD5_K[25]);
+            c = md5_gg(c, d, a, b, x[i + 3], MD5_S[1][2], MD5_K[26]);
+            b = md5_gg(b, c, d, a, x[i + 8], MD5_S[1][3], MD5_K[27]);
+            a = md5_gg(a, b, c, d, x[i + 13], MD5_S[1][0], MD5_K[28]);
+            d = md5_gg(d, a, b, c, x[i + 2], MD5_S[1][1], MD5_K[29]);
+            c = md5_gg(c, d, a, b, x[i + 7], MD5_S[1][2], MD5_K[30]);
+            b = md5_gg(b, c, d, a, x[i + 12], MD5_S[1][3], MD5_K[31]);
+
+            a = md5_hh(a, b, c, d, x[i + 5], MD5_S[2][0], MD5_K[32]);
+            d = md5_hh(d, a, b, c, x[i + 8], MD5_S[2][1], MD5_K[33]);
+            c = md5_hh(c, d, a, b, x[i + 11], MD5_S[2][2], MD5_K[34]);
+            b = md5_hh(b, c, d, a, x[i + 14], MD5_S[2][3], MD5_K[35]);
+            a = md5_hh(a, b, c, d, x[i + 1], MD5_S[2][0], MD5_K[36]);
+            d = md5_hh(d, a, b, c, x[i + 4], MD5_S[2][1], MD5_K[37]);
+            c = md5_hh(c, d, a, b, x[i + 7], MD5_S[2][2], MD5_K[38]);
+            b = md5_hh(b, c, d, a, x[i + 10], MD5_S[2][3], MD5_K[39]);
+            a = md5_hh(a, b, c, d, x[i + 13], MD5_S[2][0], MD5_K[40]);
+            d = md5_hh(d, a, b, c, x[i + 0], MD5_S[2][1], MD5_K[41]);
+            c = md5_hh(c, d, a, b, x[i + 3], MD5_S[2][2], MD5_K[42]);
+            b = md5_hh(b, c, d, a, x[i + 6], MD5_S[2][3], MD5_K[43]);
+            a = md5_hh(a, b, c, d, x[i + 9], MD5_S[2][0], MD5_K[44]);
+            d = md5_hh(d, a, b, c, x[i + 12], MD5_S[2][1], MD5_K[45]);
+            c = md5_hh(c, d, a, b, x[i + 15], MD5_S[2][2], MD5_K[46]);
+            b = md5_hh(b, c, d, a, x[i + 2], MD5_S[2][3], MD5_K[47]);
+
+            a = md5_ii(a, b, c, d, x[i + 0], MD5_S[3][0], MD5_K[48]);
+            d = md5_ii(d, a, b, c, x[i + 7], MD5_S[3][1], MD5_K[49]);
+            c = md5_ii(c, d, a, b, x[i + 14], MD5_S[3][2], MD5_K[50]);
+            b = md5_ii(b, c, d, a, x[i + 5], MD5_S[3][3], MD5_K[51]);
+            a = md5_ii(a, b, c, d, x[i + 12], MD5_S[3][0], MD5_K[52]);
+            d = md5_ii(d, a, b, c, x[i + 3], MD5_S[3][1], MD5_K[53]);
+            c = md5_ii(c, d, a, b, x[i + 10], MD5_S[3][2], MD5_K[54]);
+            b = md5_ii(b, c, d, a, x[i + 1], MD5_S[3][3], MD5_K[55]);
+            a = md5_ii(a, b, c, d, x[i + 8], MD5_S[3][0], MD5_K[56]);
+            d = md5_ii(d, a, b, c, x[i + 15], MD5_S[3][1], MD5_K[57]);
+            c = md5_ii(c, d, a, b, x[i + 6], MD5_S[3][2], MD5_K[58]);
+            b = md5_ii(b, c, d, a, x[i + 13], MD5_S[3][3], MD5_K[59]);
+            a = md5_ii(a, b, c, d, x[i + 4], MD5_S[3][0], MD5_K[60]);
+            d = md5_ii(d, a, b, c, x[i + 11], MD5_S[3][1], MD5_K[61]);
+            c = md5_ii(c, d, a, b, x[i + 2], MD5_S[3][2], MD5_K[62]);
+            b = md5_ii(b, c, d, a, x[i + 9], MD5_S[3][3], MD5_K[63]);
+
+            a = safe_add(a, olda);
+            b = safe_add(b, oldb);
+            c = safe_add(c, oldc);
+            d = safe_add(d, oldd);
+        }
+        return Array(a, b, c, d);
+    }
+
+    function md5(string) {
+        return binl2hex(core_md5(str2binl(string), string.length * 8));
+    }
+
+    const RegToStringDetector = (function() {
+        inherits(RegToStringDetectorInternal, BaseDetector);
+        const _super = createSuper(RegToStringDetectorInternal);
+        function RegToStringDetectorInternal() {
+            assertInstanceof(this, RegToStringDetectorInternal);
+            return _super.call(this, { type: DetectorType.RegToString, enabled: envFlags.qqBrowser || envFlags.firefox });
+        }
+        createClass(RegToStringDetectorInternal, [{
+            key: "init",
+            value: function init() {
+                const self = this;
+                this.lastTime = 0;
+                this.reg = /./;
+                _consoleLog(this.reg); 
+                this.reg.toString = function() {
+                    let currentTime;
+                    if (envFlags.qqBrowser) {
+                        currentTime = new Date().getTime();
+                        if (self.lastTime && (currentTime - self.lastTime < 100)) {
+                            self.onDevToolOpen();
+                        }
+                        self.lastTime = currentTime;
+                    } else if (envFlags.firefox) {
+                        self.onDevToolOpen();
+                    }
+                    return "";
+                };
+            }
+        }, {
+            key: "detect",
+            value: function detect() {
+                _consoleLog(this.reg);
+            }
+        }]);
+        return RegToStringDetectorInternal;
+    }());
+
+    const DefineIdDetector = (function() {
+        inherits(DefineIdDetectorInternal, BaseDetector);
+        const _super = createSuper(DefineIdDetectorInternal);
+        function DefineIdDetectorInternal() {
+            assertInstanceof(this, DefineIdDetectorInternal);
+            return _super.call(this, { type: DetectorType.DefineId });
+        }
+        createClass(DefineIdDetectorInternal, [{
+            key: "init",
+            value: function init() {
+                const self = this;
+                this.div = document.createElement("div");
+                this.div.__defineGetter__("id", function() {
+                    self.onDevToolOpen();
+                });
+                Object.defineProperty(this.div, "id", {
+                    get: function() {
+                        self.onDevToolOpen();
+                    }
+                });
+            }
+        }, {
+            key: "detect",
+            value: function detect() {
+                _consoleLog(this.div);
+            }
+        }]);
+        return DefineIdDetectorInternal;
+    }());
+
+    const SizeDetector = (function() {
+        inherits(SizeDetectorInternal, BaseDetector);
+        const _super = createSuper(SizeDetectorInternal);
+        function SizeDetectorInternal() {
+            assertInstanceof(this, SizeDetectorInternal);
+            return _super.call(this, { type: DetectorType.Size, enabled: !envFlags.iframe && !envFlags.edge });
+        }
+        createClass(SizeDetectorInternal, [{
+            key: "init",
+            value: function init() {
+                const self = this;
+                this.checkWindowSizeUneven();
+                window.addEventListener("resize", function() {
+                    setTimeout(function() {
+                        self.checkWindowSizeUneven();
+                    }, 100);
+                }, true);
+            }
+        }, {
+            key: "detect",
+            value: function detect() {}
+        }, {
+            key: "checkWindowSizeUneven",
+            value: function checkWindowSizeUneven() {
+                const pixelRatio = (function() {
+                    if (window.devicePixelRatio != null) return window.devicePixelRatio;
+                    const screen = window.screen;
+                    if (screen == null || !screen.deviceXDPI || !screen.logicalXDPI) return false;
+                    return screen.deviceXDPI / screen.logicalXDPI;
+                })();
+
+                if (pixelRatio === false) return true;
+
+                const widthUneven = window.outerWidth - window.innerWidth * pixelRatio > 200;
+                const heightUneven = window.outerHeight - window.innerHeight * pixelRatio > 300;
+
+                if (widthUneven || heightUneven) {
+                    this.onDevToolOpen();
+                    return false;
+                }
+                resetDetectorState(this.type);
+                return true;
+            }
+        }]);
+        return SizeDetectorInternal;
+    }());
+    
+    function isValueNotNull(val) {
+        return val != null;
+    }
+
+    const DateToStringDetector = (function() {
+        inherits(DateToStringDetectorInternal, BaseDetector);
+        const _super = createSuper(DateToStringDetectorInternal);
+        function DateToStringDetectorInternal() {
+            assertInstanceof(this, DateToStringDetectorInternal);
+            return _super.call(this, { type: DetectorType.DateToString, enabled: !envFlags.iosChrome && !envFlags.iosEdge });
+        }
+        createClass(DateToStringDetectorInternal, [{
+            key: "init",
+            value: function init() {
+                const self = this;
+                this.count = 0;
+                this.date = new Date();
+                this.date.toString = function() {
+                    self.count++;
+                    return "";
+                };
+            }
+        }, {
+            key: "detect",
+            value: function detect() {
+                this.count = 0;
+                _consoleLog(this.date);
+                clearConsoleIfNeeded();
+                if (this.count >= 2) {
+                    this.onDevToolOpen();
+                }
+            }
+        }]);
+        return DateToStringDetectorInternal;
+    }());
+
+    const FuncToStringDetector = (function() {
+        inherits(FuncToStringDetectorInternal, BaseDetector);
+        const _super = createSuper(FuncToStringDetectorInternal);
+        function FuncToStringDetectorInternal() {
+            assertInstanceof(this, FuncToStringDetectorInternal);
+            return _super.call(this, { type: DetectorType.FuncToString, enabled: !envFlags.iosChrome && !envFlags.iosEdge });
+        }
+        createClass(FuncToStringDetectorInternal, [{
+            key: "init",
+            value: function init() {
+                const self = this;
+                this.count = 0;
+                this.func = function() {};
+                this.func.toString = function() {
+                    self.count++;
+                    return "";
+                };
+            }
+        }, {
+            key: "detect",
+            value: function detect() {
+                this.count = 0;
+                _consoleLog(this.func);
+                clearConsoleIfNeeded();
+                if (this.count >= 2) {
+                    this.onDevToolOpen();
+                }
+            }
+        }]);
+        return FuncToStringDetectorInternal;
+    }());
+
+    const DebuggerStatementDetector = (function() {
+        inherits(DebuggerStatementDetectorInternal, BaseDetector);
+        const _super = createSuper(DebuggerStatementDetectorInternal);
+        function DebuggerStatementDetectorInternal() {
+            assertInstanceof(this, DebuggerStatementDetectorInternal);
+            return _super.call(this, { type: DetectorType.Debugger, enabled: envFlags.iosChrome || envFlags.iosEdge });
+        }
+        createClass(DebuggerStatementDetectorInternal, [{
+            key: "detect",
+            value: function detect() {
+                const startTime = getCurrentTimestamp();
+                debugger;
+                if (getCurrentTimestamp() - startTime > 100) {
+                    this.onDevToolOpen();
+                }
+            }
+        }]);
+        return DebuggerStatementDetectorInternal;
+    }());
+
+    const PerformanceDetector = (function() {
+        inherits(PerformanceDetectorInternal, BaseDetector);
+        const _super = createSuper(PerformanceDetectorInternal);
+        function PerformanceDetectorInternal() {
+            assertInstanceof(this, PerformanceDetectorInternal);
+            return _super.call(this, { type: DetectorType.Performance, enabled: envFlags.chrome || !envFlags.mobile });
+        }
+        createClass(PerformanceDetectorInternal, [{
+            key: "init",
+            value: function init() {
+                this.maxPrintTime = 0;
+                this.largeObjectArray = createLargeObjectArray();
+            }
+        }, {
+            key: "detect",
+            value: function detect() {
+                const self = this;
+                const tableTime = measureExecutionTime(function() {
+                    _consoleTable(self.largeObjectArray);
+                });
+                const logTime = measureExecutionTime(function() {
+                    _consoleLog(self.largeObjectArray);
+                });
+
+                this.maxPrintTime = Math.max(this.maxPrintTime, logTime);
+                clearConsoleIfNeeded();
+
+                if (tableTime === 0 || this.maxPrintTime === 0) return false;
+
+                if (tableTime > this.maxPrintTime * 10) {
+                    this.onDevToolOpen();
+                }
+            }
+        }]);
+        return PerformanceDetectorInternal;
+    }());
+
+
+    const detectorRegistry = {};
+    definePropertyOrSet(detectorRegistry, DetectorType.RegToString, RegToStringDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.DefineId, DefineIdDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.Size, SizeDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.DateToString, DateToStringDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.FuncToString, FuncToStringDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.Debugger, DebuggerStatementDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.Performance, PerformanceDetector);
+    definePropertyOrSet(detectorRegistry, DetectorType.DebugLib, DebugLibDetector);
+
+
+    const DisableDevtoolMainObject = Object.assign(function(userConfig) {
+        function createResult(success, reason = "") {
+            return { success: success, reason: reason };
+        }
+
+        if (DisableDevtoolMainObject.isRunning) return createResult(false, "already running");
+
+        detectEnvironment();
+        
+        const tempConsole = window.console || { log: function(){}, table: function(){}, clear: function(){} };
+        if(envFlags.ie) {
+            _consoleLog = function() { return tempConsole.log.apply(tempConsole, arguments); };
+            _consoleTable = function() { return tempConsole.table.apply(tempConsole, arguments); };
+            _consoleClear = function() { return tempConsole.clear(); };
+        } else {
+            _consoleLog = tempConsole.log;
+            _consoleTable = tempConsole.table;
+            _consoleClear = tempConsole.clear;
+        }
+
+        applyUserConfig(userConfig);
+
+        if (currentConfig.md5) {
+            const tkName = currentConfig.tkName;
+            let tokenInUrl = null;
+            try {
+                 const urlParams = new URLSearchParams(window.location.search);
+                 tokenInUrl = urlParams.get(tkName);
+                 if(tokenInUrl === null && window.location.hash){
+                     const hashParams = new URLSearchParams(window.location.hash.split("?")[1] || "");
+                     tokenInUrl = hashParams.get(tkName);
+                 }
+            } catch(e) {}
+            if (md5(tokenInUrl || "") === currentConfig.md5) {
+                return createResult(true, "token passed");
+            }
+        }
+
+        if (currentConfig.seo && envFlags.seoBot) {
+            return createResult(true, "seobot");
+        }
+
+        DisableDevtoolMainObject.isRunning = true;
+        isGloballySuspended = DisableDevtoolMainObject.isSuspend; 
+        
+        startDetectionInterval(DisableDevtoolMainObject);
+
+        addKeyboardAndMenuListeners(window);
+        if (currentConfig.disableIframeParents && envFlags.iframe) {
+            let currentParent = window.parent;
+            const topWindow = window.top;
+            try {
+                while(currentParent && currentParent !== topWindow && currentParent.document) {
+                     addKeyboardAndMenuListeners(currentParent);
+                     currentParent = currentParent.parent;
+                }
+                if(topWindow && topWindow.document) {
+                    addKeyboardAndMenuListeners(topWindow);
+                }
+            } catch(e) {}
+        }
+        
+        const detectorsToUse = currentConfig.detectors === "all" ? Object.keys(detectorRegistry) : currentConfig.detectors;
+        detectorsToUse.forEach(function(detectorKey) {
+            if (detectorRegistry[detectorKey]) {
+                new detectorRegistry[detectorKey]();
+            }
+        });
+
+        return createResult(true);
+
+    }, {
+        isRunning: false,
+        isSuspend: false,
+        md5: md5,
+        version: "0.3.8", 
+        DetectorType: DetectorType,
+        isDevToolOpened: hasAnyDetectorTriggered
+    });
+    
+    const autoInitConfig = (function() {
+        if (typeof window === "undefined" || !window.document) return null;
+        const scriptTag = document.querySelector("[disable-devtool-auto]");
+        if (!scriptTag) return null;
+
+        const config = {};
+        const booleanAttrs = ["disable-menu", "disable-select", "disable-copy", "disable-cut", "disable-paste", "clear-log", "seo", "disable-iframe-parents", "clear-interval-when-dev-open-trigger"];
+        const stringAttrs = ["md5", "url", "tk-name", "rewrite-html", "time-out-url"];
+        const numberAttrs = ["interval", "stop-interval-time"];
+        const specialAttrs = ["detectors", "ignore", "ondevtoolopen", "ondevtoolclose"];
+
+
+        function camelCase(str) {
+            if (str.indexOf("-") === -1) return str;
+            let wasDash = false;
+            return str.split("").map(function(char) {
+                if (char === "-") {
+                    wasDash = true;
+                    return "";
+                }
+                const result = wasDash ? char.toUpperCase() : char;
+                wasDash = false;
+                return result;
+            }).join("");
+        }
+        
+        stringAttrs.concat(booleanAttrs, numberAttrs, specialAttrs).forEach(function(attrName) {
+            let value = scriptTag.getAttribute(attrName);
+            if (value === null) return;
+
+            const camelCasedAttrName = camelCase(attrName);
+
+            if (booleanAttrs.includes(attrName)) {
+                value = (value !== "false");
+            } else if (numberAttrs.includes(attrName)) {
+                value = parseInt(value, 10);
+                 if(isNaN(value)) return;
+            } else if (attrName === "detectors") {
+                if (value !== "all") {
+                    value = value.split(" ").map(Number).filter(n => !isNaN(n) && DetectorType[n] !== undefined);
+                }
+            } else if (attrName === "ignore") {
+                try { value = JSON.parse(value); } catch(e) { value = value.split(" ");} 
+            } else if (attrName === "ondevtoolopen" || attrName === "ondevtoolclose") {
+                if(typeof window[value] === 'function') value = window[value];
+                else return;
+            }
+
+            config[camelCasedAttrName] = value;
+        });
+        return config;
+    })();
+
+    if (autoInitConfig) {
+        DisableDevtoolMainObject(autoInitConfig);
+    }
+
+    return DisableDevtoolMainObject;
+});
