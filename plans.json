@@ -1,0 +1,7 @@
+[
+  { "plan": "Core Access", "price": "₱0" },
+  { "plan": "Prime Core", "price": "₱20" },
+  { "plan": "Alpha Core", "price": "₱35" },
+  { "plan": "EXO Elite", "price": "₱15" },
+  { "plan": "Hacker Core", "price": "₱45" }
+]
