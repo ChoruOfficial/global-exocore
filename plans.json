@@ -1,0 +1,7 @@
+[
+  { "plan": "Core Access", "price": "$0" },
+  { "plan": "Prime Core", "price": "$0.35" },
+  { "plan": "Alpha Core", "price": "$0.63" },
+  { "plan": "EXO Elite", "price": "$0.27" },
+  { "plan": "Hacker Core", "price": "$0.80" }
+]
