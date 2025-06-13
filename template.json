@@ -3,5 +3,10 @@
     "id": "default",
     "name": "Nodejs-Express",
     "git": "https://github.com/ChoruTiktokers182/ExocoreDefaultTemplate.git"
+  },
+  {
+    "id": "default",
+    "name": "Fast-api Python",
+    "git": "https://github.com/Exocore-Organization/ExocoreDefaultTemplatePython.git"
   }
 ]
