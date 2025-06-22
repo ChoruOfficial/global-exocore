@@ -2,11 +2,15 @@
   {
     "id": "defaultNodejs",
     "name": "Nodejs-Express",
-    "git": "https://github.com/ChoruTiktokers182/ExocoreDefaultTemplate.git"
+    "git": "https://github.com/ChoruTiktokers182/ExocoreDefaultTemplate.git",
+    "describe": "A basic Node.js project with Express.js, perfect for building REST APIs or backend services quickly.",
+    "image": "https://upload.wikimedia.org/wikipedia/commons/6/64/Expressjs.png"
   },
   {
     "id": "defaultPython",
     "name": "Fast-api Python",
-    "git": "https://github.com/Exocore-Organization/ExocoreDefaultTemplatePython.git"
+    "git": "https://github.com/Exocore-Organization/ExocoreDefaultTemplatePython.git",
+    "describe": "A FastAPI Python project template ideal for rapid backend development with automatic documentation.",
+    "image": "https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png"
   }
 ]
