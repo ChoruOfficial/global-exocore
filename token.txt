@@ -1,0 +1,14 @@
+
+access_token: "ya29.a0AQvPyIN7Ijt-EoqmWwe3K-jOCTSYzhqy-TNl3RfL15fvZodG4w-z107hApe7rtl79Hsw-OYE1AQWht3cDUSuDJ8MMfA9hkklNGiMAXzc6ANH5SO8Jq-vw3N8p7eGQzVbddYSuCmdJoYT6k0273FJ306KhzuYG4vg7vXuJfsha-MwDK-1GubBhil1nQNI7C0XcKdE0_caCgYKAWISARASFQHGX2MiPYl19u3exn_6DXMEioGcmA0206"
+expires_in: 3599
+id: "tokens"
+refresh_token: "1//0ggpFbH6y5W2bCgYIARAAGBASNwF-L9Iru92YJcA5Enp8jk1mcxvPfj4id6J-YYJSXENz46Uu8ETNfZrCmh7QapCle0vRwepEhdg"
+savedAt: 1777792605914
+scope: "https://www.googleapis.com/auth/drive.file"
+token_type: "Bearer"
+
+
+
+
+
+
